@@ -93,6 +93,7 @@ func guiMain (confglobal string,conflocal string) {
     window.SetPosition(gtk.WIN_POS_CENTER)
     window.SetSizeRequest(350, 500)
     window.SetDecorated(false)
+    window.SetResizable(true)
     window.Connect("destroy", gtk.MainQuit)
 
 //owner
@@ -148,7 +149,6 @@ func guiMain (confglobal string,conflocal string) {
     var diffy int = 0
     px := &x
     py := &y
-
     movearea := gtk.NewDrawingArea()
     movearea.Connect ("motion-notify-event", func(ctx *glib.CallbackContext) {
         if gdkwin == nil {
@@ -174,8 +174,41 @@ func guiMain (confglobal string,conflocal string) {
             p2.y=-1
         }
     })
-
     movearea.SetEvents(int(gdk.POINTER_MOTION_MASK | gdk.POINTER_MOTION_HINT_MASK | gdk.BUTTON_PRESS_MASK))
+//resize window
+    var p2r,p1r point
+    var gdkwinr *gdk.Window
+    p1r.x=-1
+    p2r.y=-1
+    var xr int = 0
+    var yr int = 0
+    var diffxr int = 0
+    var diffyr int = 0
+    pxr := &xr
+    pyr := &yr
+
+    resizearea := gtk.NewDrawingArea()
+    resizearea.Connect ("motion-notify-event", func(ctx *glib.CallbackContext) {
+        if gdkwinr == nil {
+            gdkwinr = resizearea.GetWindow()
+        }
+        argr := ctx.Args(0)
+        mevr := *(**gdk.EventMotion)(unsafe.Pointer(&argr))
+        var mtr gdk.ModifierType
+        if mevr.IsHint != 0 {
+            gdkwinr.GetPointer(&p2r.x, &p2r.y, &mtr)
+        }
+        if (gdk.EventMask(mtr)&gdk.BUTTON_PRESS_MASK) != 0 {
+            if p1r.x!=-1 && p1r.y!=-1 {
+                diffxr = p2r.x-p1r.x
+                diffyr = p2r.y-p1r.y
+                window.GetSize(pxr,pyr)
+                window.Resize(xr+diffxr,yr+diffyr)
+            }
+        }
+        p1r=p2r
+    })
+    resizearea.SetEvents(int(gdk.POINTER_MOTION_MASK | gdk.POINTER_MOTION_HINT_MASK | gdk.BUTTON_PRESS_MASK))
 
     menutable := gtk.NewTable(1, 8, true)
     menutable.Attach(movearea,0,6,0,1,gtk.FILL,gtk.FILL,0,0)
@@ -272,6 +305,7 @@ func guiMain (confglobal string,conflocal string) {
     vbox.Add(menutable)
     vbox.Add(table)
     vbox.Add(notebook)
+    vbox.Add(resizearea)
 
     window.Add(vbox)
     window.ShowAll()
