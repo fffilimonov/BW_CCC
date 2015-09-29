@@ -96,6 +96,10 @@ func guiMain (confglobal string,conflocal string) {
     window.SetResizable(true)
     window.Connect("destroy", gtk.MainQuit)
 
+    swin := gtk.NewScrolledWindow(nil, nil)
+    swin.SetPolicy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+    swin.SetShadowType(gtk.SHADOW_IN)
+
 //owner
     owner1 := gtk.NewLabel(names[owner])
     owner2 := gtk.NewLabel("")
@@ -176,40 +180,8 @@ func guiMain (confglobal string,conflocal string) {
     })
     movearea.SetEvents(int(gdk.POINTER_MOTION_MASK | gdk.POINTER_MOTION_HINT_MASK | gdk.BUTTON_PRESS_MASK))
 //resize window
-    var p2r,p1r point
-    var gdkwinr *gdk.Window
-    p1r.x=-1
-    p2r.y=-1
-    var xr int = 0
-    var yr int = 0
-    var diffxr int = 0
-    var diffyr int = 0
-    pxr := &xr
-    pyr := &yr
-
-    resizearea := gtk.NewDrawingArea()
-    resizearea.Connect ("motion-notify-event", func(ctx *glib.CallbackContext) {
-        if gdkwinr == nil {
-            gdkwinr = resizearea.GetWindow()
-        }
-        argr := ctx.Args(0)
-        mevr := *(**gdk.EventMotion)(unsafe.Pointer(&argr))
-        var mtr gdk.ModifierType
-        if mevr.IsHint != 0 {
-            gdkwinr.GetPointer(&p2r.x, &p2r.y, &mtr)
-        }
-        if (gdk.EventMask(mtr)&gdk.BUTTON_PRESS_MASK) != 0 {
-            if p1r.x!=-1 && p1r.y!=-1 {
-                diffxr = p2r.x-p1r.x
-                diffyr = p2r.y-p1r.y
-                window.GetSize(pxr,pyr)
-                window.Resize(xr+diffxr,yr+diffyr)
-            }
-        }
-        p1r=p2r
-    })
-    resizearea.SetEvents(int(gdk.POINTER_MOTION_MASK | gdk.POINTER_MOTION_HINT_MASK | gdk.BUTTON_PRESS_MASK))
-
+    statusbar := gtk.NewStatusbar()
+//menu
     menutable := gtk.NewTable(1, 8, true)
     menutable.Attach(movearea,0,6,0,1,gtk.FILL,gtk.FILL,0,0)
     menutable.Attach(btnhide,6,7,0,1,gtk.EXPAND,gtk.EXPAND,0,0)
@@ -305,9 +277,10 @@ func guiMain (confglobal string,conflocal string) {
     vbox.Add(menutable)
     vbox.Add(table)
     vbox.Add(notebook)
-    vbox.Add(resizearea)
+    vbox.Add(statusbar)
 
-    window.Add(vbox)
+    swin.AddWithViewPort(vbox)
+    window.Add(swin)
     window.ShowAll()
     var qcount int = 0
     go func() {
