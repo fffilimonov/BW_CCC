@@ -1,8 +1,10 @@
 package main
 
 import (
+    "bufio"
     "fmt"
     "gopkg.in/gcfg.v1"
+    "net"
     "os"
     "strings"
     "time"
@@ -10,25 +12,58 @@ import (
 
 type ConfigT struct {
     Main struct {
-        User string
-        Password string
+        Server string
+        Port string
         Host string
         HTTPHost string
         HTTPPort string
         OCIPPort string
-        Expires string
         Wraptime time.Duration
         TargetID []string
         Name []string
-        Event []string
         CCID string
-        CCEvent string
     }
 }
 
 type ConfigTlocal struct {
     Main struct {
         Owner string
+        Password string
+    }
+}
+
+func ConnectSrv (Config ConfigT) net.Conn {
+    var dialer net.Dialer
+    dialer.Timeout=time.Second
+    chandesc, err := dialer.Dial("tcp", ConcatStr(":",Config.Main.Server,Config.Main.Port))
+    if err != nil {
+        LogErr(err,"serv dial")
+        return nil
+    } else {
+        var send string = Config.Main.CCID
+        for _,target := range Config.Main.TargetID {
+            send=ConcatStr(" ",send,target)
+        }
+        fmt.Fprintf(chandesc,"%s",send)
+        return chandesc
+    }
+}
+
+func clientMain (ch chan string,Config ConfigT) {
+    for {
+        chandesc:=ConnectSrv(Config)
+        if chandesc != nil {
+            breader := bufio.NewReader(chandesc)
+            for{
+                str,err := breader.ReadString('\n')
+                if err == nil {
+                    ch<- string(str)
+                } else {
+                    chandesc.Close()
+                    break
+                }
+            }
+        }
     }
 }
 
@@ -66,11 +101,6 @@ func LogOut (log string) {
 
 func Log2Out (args ... string) {
     fmt.Fprint(os.Stdout,args,"\n\n")
-}
-
-type lCalls struct {
-    Addr string
-    Time time.Time
 }
 
 type point struct {

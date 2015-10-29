@@ -1,17 +1,13 @@
 [Main]
-User="admin@broadworks.com";
-Password="12345";
+Server="192.168.3.160";
+Port="8081";
 Host="broadworks.com";
 HTTPHost="broadworks.com"
 HTTPPort="80";
 OCIPPort="2208";
-Expires="600";
 Wraptime="15";
 TargetID="7562@broadworks.com";
 TargetID="2901@broadworks.com";
 Name="имя фамилия";
 Name="имя2 фамилия2";
-Event="Basic Call";
-Event="Call Center Agent";
 CCID="9393@broadworks.com";
-CCEvent="Call Center Queue";

@@ -1,79 +1,60 @@
 package main
 
 import (
-    "container/ring"
     "github.com/mattn/go-gtk/glib"
     "github.com/mattn/go-gtk/gdk"
     "github.com/mattn/go-gtk/gtk"
     "github.com/mattn/go-gtk/gdkpixbuf"
     "github.com/fffilimonov/OCIP_go"
     "github.com/fffilimonov/XSI_go"
-    "net"
     "strings"
     "strconv"
     "time"
     "unsafe"
 )
 
-func clientMain (guich chan CallInfo,Config xsi.ConfigT,owner string,def xsi.DefHead,Event []string,ccid string,ccevent string) {
-/* chans */
-    ch := make(chan string,100)
-    datach := make(chan string,100)
-    cCh := make(chan net.Conn)
-/* start sybscription and reading to chan */
-    go xsi.XSIresubscribe(Config,cCh,owner,Event,ccid,ccevent)
-    go xsi.XSIread(ch,cCh)
-/* handle reading */
-    go xsi.XSImain(Config,def,ch,datach)
-    for {
-        select {
-            case data := <-datach:
-                cinfo := ParseData([]byte(data))
-                einfo:=ParseEdata([]byte(data))
-                cinfo.Etype=einfo.Edata.Etype
-                guich<-cinfo
-            default:
-                time.Sleep(time.Millisecond*10)
-        }
-    }
-}
-
 func guiMain (confglobal string,conflocal string) {
     var CallID string
-    ch := make(chan CallInfo,100)
+    ch := make(chan string,100)
     Config := ReadConfig(confglobal)
     Configlocal := ReadConfiglocal(conflocal)
     owner:=Configlocal.Main.Owner
+
 //prepare config for XSI
     var xsiConfig xsi.ConfigT
-    xsiConfig.Main.User=Config.Main.User
-    xsiConfig.Main.Password=Config.Main.Password
+    xsiConfig.Main.User=Configlocal.Main.Owner
+    xsiConfig.Main.Password=Configlocal.Main.Password
     xsiConfig.Main.Host=Config.Main.Host
     xsiConfig.Main.HTTPHost=Config.Main.HTTPHost
     xsiConfig.Main.HTTPPort=Config.Main.HTTPPort
-    xsiConfig.Main.Expires=Config.Main.Expires
     def := xsi.MakeDef(xsiConfig)
-    go clientMain(ch,xsiConfig,owner,def,Config.Main.Event,Config.Main.CCID,Config.Main.CCEvent)
-    list := ring.New(15)
+
+//start main client
+    go clientMain(ch,Config)
+
 //prepare config for OCI
     var ociConfig ocip.ConfigT
-    ociConfig.Main.User=Config.Main.User
-    ociConfig.Main.Password=Config.Main.Password
+    ociConfig.Main.User=Configlocal.Main.Owner
+    ociConfig.Main.Password=Configlocal.Main.Password
     ociConfig.Main.Host=Config.Main.Host
     ociConfig.Main.OCIPPort=Config.Main.OCIPPort
 
+//prepare timer
     timer := time.NewTimer(time.Second)
     timer.Stop()
 
+//init gthreads
     glib.ThreadInit(nil)
     gdk.ThreadsInit()
     gdk.ThreadsEnter()
     gtk.Init(nil)
+
 //names
     names := make(map[string]string)
     for iter,target := range Config.Main.TargetID {
         names[target]=Config.Main.Name[iter]
     }
+
 //icons to pixbuf map
     pix := make(map[string]*gdkpixbuf.Pixbuf)
     im_call := gtk.NewImageFromFile("ico/Call-Ringing-48.ico")
@@ -104,9 +85,11 @@ func guiMain (confglobal string,conflocal string) {
     owner1 := gtk.NewLabel(names[owner])
     owner2 := gtk.NewLabel("")
     owner3 := gtk.NewImage()
+
 //qstatus
     qlabel1:=gtk.NewLabel("В очереди:")
     qlabel2:=gtk.NewLabel("")
+
 //buttons
     b_av := gtk.NewButtonWithLabel("Доступен")
     b_av.SetCanFocus(false)
@@ -123,6 +106,7 @@ func guiMain (confglobal string,conflocal string) {
     b_wr.Connect("clicked", func() {
             ocip.OCIPsend(ociConfig,"UserCallCenterModifyRequest19",ConcatStr("","userId=",owner),"agentACDState=Wrap-Up")
         })
+
 //main table
     table := gtk.NewTable(3, 3, false)
     table.Attach(owner1,0,1,0,1,gtk.FILL,gtk.FILL,1,1)
@@ -142,6 +126,7 @@ func guiMain (confglobal string,conflocal string) {
     btnhide := gtk.NewToolButtonFromStock(gtk.STOCK_REMOVE)
     btnhide.SetCanFocus(false)
     btnhide.OnClicked(window.Iconify)
+
 //move window
     var p2,p1 point
     var gdkwin *gdk.Window
@@ -179,6 +164,7 @@ func guiMain (confglobal string,conflocal string) {
         }
     })
     movearea.SetEvents(int(gdk.POINTER_MOTION_MASK | gdk.POINTER_MOTION_HINT_MASK | gdk.BUTTON_PRESS_MASK))
+
 //resize window
     var p2r,p1r point
     var gdkwinr *gdk.Window
@@ -192,6 +178,7 @@ func guiMain (confglobal string,conflocal string) {
     pyr := &yr
 
     resizearea := gtk.NewDrawingArea()
+    resizearea.SetSizeRequest(10, 10)
     resizearea.Connect ("motion-notify-event", func(ctx *glib.CallbackContext) {
         if gdkwinr == nil {
             gdkwinr = resizearea.GetWindow()
@@ -213,13 +200,13 @@ func guiMain (confglobal string,conflocal string) {
         p1r=p2r
     })
     resizearea.SetEvents(int(gdk.POINTER_MOTION_MASK | gdk.POINTER_MOTION_HINT_MASK | gdk.BUTTON_PRESS_MASK)) 
+
 //menu
     menutable := gtk.NewTable(1, 8, true)
     menutable.Attach(movearea,0,6,0,1,gtk.FILL,gtk.FILL,0,0)
     menutable.Attach(btnhide,6,7,0,1,gtk.EXPAND,gtk.EXPAND,0,0)
     menutable.Attach(btnclose,7,8,0,1,gtk.EXPAND,gtk.EXPAND,0,0)
 
-    notebook := gtk.NewNotebook()
 //agents
     dlabel1 := make(map[string]*gtk.Label)
     dlabel2 := make(map[string]*gtk.Image)
@@ -235,11 +222,9 @@ func guiMain (confglobal string,conflocal string) {
             dlabel3[target] = gtk.NewImage()
             tmp := gtk.NewButtonWithLabel("Перевод")
             tmp.SetCanFocus(false)
-//dirty hack
             tmptarget:=target
             tmp.Connect("clicked", func() {
                 xsi.XSITransfer (xsiConfig,def,owner,CallID,tmptarget)
-                notebook.SetCurrentPage(0)
             })
             b_tr[target]=tmp
         }
@@ -257,54 +242,24 @@ func guiMain (confglobal string,conflocal string) {
         }
     }
 
+//calls
     table_cl := gtk.NewTable(2, 15, false)
     dlabel4 := make(map[uint]*gtk.Label)
     dlabel5 := make(map[uint]*gtk.Label)
     var i uint
-    for i=0;i<uint(list.Len());i++{
+    for i=0;i<15;i++{
         dlabel4[i] = gtk.NewLabel("")
         table_cl.Attach(dlabel4[i],0,1,i,i+1,gtk.FILL,gtk.FILL,1,1)
         dlabel5[i] = gtk.NewLabel("")
         table_cl.Attach(dlabel5[i],1,2,i,i+1,gtk.FILL,gtk.FILL,1,1)
     }
 
-    notebook.AppendPage(table_cl, gtk.NewLabel("Звонки"))
+//tabs
+    notebook := gtk.NewNotebook()
     notebook.AppendPage(table_ag, gtk.NewLabel("Агенты"))
+    notebook.AppendPage(table_cl, gtk.NewLabel("Звонки"))
 
-//refresh on switch
-    notebook.Connect("switch-page", func(){
-        if notebook.GetCurrentPage() == 0 {
-            for _,target := range Config.Main.TargetID {
-                if target != owner {
-                    hook:=xsi.XSIGetHook(xsiConfig,def,target)
-                    if hook == "Off-Hook" {
-                        tmp:=dlabel3[target]
-                        tmp.SetFromPixbuf(pix["call"])
-                        dlabel3[target]=tmp
-                    }else{
-                        tmp:=dlabel3[target]
-                        tmp.SetFromPixbuf(pix["blank"])
-                        dlabel3[target]=tmp
-                    }
-                    acdstatus:=GetAcd([]byte(ocip.OCIPsend(ociConfig,"UserCallCenterGetRequest19",ConcatStr("","userId=",target))))
-                    if acdstatus == "Available" {
-                        tmp:=dlabel2[target]
-                        tmp.SetFromPixbuf(pix["green"])
-                        dlabel2[target]=tmp
-                    }else if acdstatus == "Wrap-Up" {
-                        tmp:=dlabel2[target]
-                        tmp.SetFromPixbuf(pix["yellow"])
-                        dlabel2[target]=tmp
-                    }else {
-                        tmp:=dlabel2[target]
-                        tmp.SetFromPixbuf(pix["grey"])
-                        dlabel2[target]=tmp
-                    }
-                }
-            }
-        }
-    })
-
+//add all to window
     vbox := gtk.NewVBox(false, 1)
     vbox.Add(menutable)
     vbox.Add(table)
@@ -314,90 +269,113 @@ func guiMain (confglobal string,conflocal string) {
     swin.AddWithViewPort(vbox)
     window.Add(swin)
     window.ShowAll()
-    var qcount int = 0
+
+//main func for update
     go func() {
         for{
             select {
-                case cinfo := <-ch:
-                    if cinfo.Target==owner {
-                        if cinfo.Pers == "Terminator" && cinfo.State == "Alerting" {
+                case data := <-ch:
+                    cinfo := strings.Split(strings.Trim(data, "\n"), ";")
+//owner
+                    if cinfo[0]==owner && cinfo[1]=="state" {
+                        if cinfo[4] != "" {
+                            CallID=cinfo[5]
                             gdk.ThreadsEnter()
-                            owner2.SetLabel(strings.Trim(cinfo.Addr,"tel:"))
-                            CallID=cinfo.CallID
+                            owner2.SetLabel(strings.Trim(cinfo[4],"tel:"))
                             gdk.ThreadsLeave()
-                        }
-                        if cinfo.Pers == "Terminator" && cinfo.State == "Released" {
-                            gdk.ThreadsEnter()
+                        } else {
                             CallID=""
+                            gdk.ThreadsEnter()
                             owner2.SetLabel("")
                             gdk.ThreadsLeave()
                         }
-                        if cinfo.CCstatus != "" || cinfo.CCstatuschanged != "" {
-                            var ccstatus string
-                            if cinfo.CCstatus != "" {
-                                ccstatus=cinfo.CCstatus
-                            }
-                            if cinfo.CCstatuschanged != "" {
-                                ccstatus=cinfo.CCstatuschanged
-                            }
+                        if cinfo[3] == "Available" {
                             gdk.ThreadsEnter()
-                                if ccstatus == "Available" {
-                                    owner3.SetFromPixbuf(pix["green"])
-                                } else if ccstatus == "Wrap-Up" {
-                                    owner3.SetFromPixbuf(pix["yellow"])
-                                    timer.Reset(time.Second * Config.Main.Wraptime)
-                                }else{
-                                    owner3.SetFromPixbuf(pix["grey"])
+                            owner3.SetFromPixbuf(pix["green"])
+                            gdk.ThreadsLeave()
+                        } else if cinfo[3] == "Wrap-Up" {
+                            gdk.ThreadsEnter()
+                            owner3.SetFromPixbuf(pix["yellow"])
+                            gdk.ThreadsLeave()
+                            timer.Reset(time.Second * Config.Main.Wraptime)
+                        }else{
+                            gdk.ThreadsEnter()
+                            owner3.SetFromPixbuf(pix["grey"])
+                            gdk.ThreadsLeave()
+                        }
+                    }
+//CC q
+                    if cinfo[0]==Config.Main.CCID && cinfo[1]=="state" {
+                        if cinfo[6] != "" {
+                            gdk.ThreadsEnter()
+                            qlabel2.SetLabel(cinfo[6])
+                            gdk.ThreadsLeave()
+                        }
+                    }
+//CC calls
+                    if cinfo[0]==Config.Main.CCID && cinfo[1]=="calls" {
+                        if cinfo[6] != "" {
+                            var i,j uint
+                            j=2
+                            for i=0;i<15;i++{
+                                if cinfo[j] != "" {
+                                    date,_:=strconv.Atoi(cinfo[j])
+                                    date=date/1000
+                                    j++
+                                    Addr:=strings.Trim(cinfo[j],"tel:")
+                                    j++
+                                    Time:=time.Unix(int64(date),0)
+                                    gdk.ThreadsEnter()
+                                    tmp4:=dlabel4[i]
+                                    tmp4.SetLabel(Time.Format(time.Stamp))
+                                    tmp5:=dlabel5[i]
+                                    tmp5.SetLabel(Addr)
+                                    dlabel4[i]=tmp4
+                                    dlabel5[i]=tmp5
+                                    gdk.ThreadsLeave()
                                 }
-                            gdk.ThreadsLeave()
-                        }
-                    }
-                    if cinfo.Etype=="xsi:ACDCallAddedEvent" {
-                        qcount=cinfo.Acount
-                        gdk.ThreadsEnter()
-                        qlabel2.SetLabel(strconv.Itoa(qcount))
-                        gdk.ThreadsLeave()
-                    }
-                    if cinfo.Etype=="xsi:ACDCallOfferedToAgentEvent" {
-                        if qcount > 0 {
-                            qcount--
-                            gdk.ThreadsEnter()
-                            qlabel2.SetLabel(strconv.Itoa(qcount))
-                            gdk.ThreadsLeave()
-                        }
-                    }
-                    if cinfo.Etype=="xsi:ACDCallAbandonedEvent" {
-                        if qcount > 0 {
-                            qcount--
-                        }
-                        date,_:=strconv.Atoi(cinfo.Atime)
-                        date=date/1000
-                        var tmp lCalls
-                        tmp.Addr=strings.Trim(cinfo.Aaddr,"tel:")
-                        tmp.Time=time.Unix(int64(date),0)
-                        list.Value = tmp
-                        list = list.Next()
-                        var i uint
-                        for i=0;i<uint(list.Len());i++{
-                            list = list.Prev()
-                            if list.Value != nil {
-                                tmp:=list.Value.(lCalls)
-                                gdk.ThreadsEnter()
-                                qlabel2.SetLabel(strconv.Itoa(qcount))
-                                tmp4:=dlabel4[i]
-                                tmp4.SetLabel(tmp.Time.Format(time.Stamp))
-                                tmp5:=dlabel5[i]
-                                tmp5.SetLabel(tmp.Addr)
-                                dlabel4[i]=tmp4
-                                dlabel5[i]=tmp5
-                                gdk.ThreadsLeave()
                             }
                         }
                     }
+//Targets
+                    if cinfo[0]!=owner && cinfo[0]!=Config.Main.CCID && cinfo[1]=="state" {
+                        if cinfo[2]=="On-Hook" {
+                            gdk.ThreadsEnter()
+                            tmp:=dlabel3[cinfo[0]]
+                            tmp.SetFromPixbuf(pix["blank"])
+                            dlabel3[cinfo[0]]=tmp
+                            gdk.ThreadsLeave()
+                        }
+                        if cinfo[2]=="Off-Hook" {
+                            gdk.ThreadsEnter()
+                            tmp:=dlabel3[cinfo[0]]
+                            tmp.SetFromPixbuf(pix["call"])
+                            dlabel3[cinfo[0]]=tmp
+                            gdk.ThreadsLeave()
+                        }
+                        if cinfo[3] == "Available" {
+                            gdk.ThreadsEnter()
+                            tmp:=dlabel2[cinfo[0]]
+                            tmp.SetFromPixbuf(pix["green"])
+                            dlabel2[cinfo[0]]=tmp
+                            gdk.ThreadsLeave()
+                        } else if cinfo[3] == "Wrap-Up" {
+                            gdk.ThreadsEnter()
+                            tmp:=dlabel2[cinfo[0]]
+                            tmp.SetFromPixbuf(pix["yellow"])
+                            dlabel2[cinfo[0]]=tmp
+                            gdk.ThreadsLeave()
+                        }else{
+                            gdk.ThreadsEnter()
+                            tmp:=dlabel2[cinfo[0]]
+                            tmp.SetFromPixbuf(pix["grey"])
+                            dlabel2[cinfo[0]]=tmp
+                            gdk.ThreadsLeave()
+                        }
+                    }
+//timer for wrap-up
                 case <-timer.C:
                     ocip.OCIPsend(ociConfig,"UserCallCenterModifyRequest19",ConcatStr("","userId=",owner),"agentACDState=Available")
-                default:
-                    time.Sleep(time.Millisecond*10)
             }
         }
     }()
