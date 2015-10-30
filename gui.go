@@ -38,7 +38,8 @@ func guiMain (confglobal string,conflocal string) {
     ociConfig.Main.Password=Configlocal.Main.Password
     ociConfig.Main.Host=Config.Main.Host
     ociConfig.Main.OCIPPort=Config.Main.OCIPPort
-
+//set unavailable at start app
+    ocip.OCIPsend(ociConfig,"UserCallCenterModifyRequest19",ConcatStr("","userId=",owner),"agentACDState=Unavailable")
 //prepare timer
     timer := time.NewTimer(time.Second)
     timer.Stop()
@@ -314,7 +315,7 @@ func guiMain (confglobal string,conflocal string) {
                     }
 //CC calls
                     if cinfo[0]==Config.Main.CCID && cinfo[1]=="calls" {
-                        if cinfo[6] != "" {
+                        if cinfo[3] != "" {
                             var i,j uint
                             j=2
                             for i=0;i<15;i++{
