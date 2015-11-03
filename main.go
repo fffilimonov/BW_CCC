@@ -35,6 +35,7 @@ type ConfigTlocal struct {
 func ConnectSrv (Config ConfigT) net.Conn {
     var dialer net.Dialer
     dialer.Timeout=time.Second
+    dialer.KeepAlive=time.Minute
     chandesc, err := dialer.Dial("tcp", ConcatStr(":",Config.Main.Server,Config.Main.Port))
     if err != nil {
         LogErr(err,"serv dial")
@@ -63,6 +64,8 @@ func clientMain (ch chan string,Config ConfigT) {
                     break
                 }
             }
+        } else {
+            time.Sleep(time.Second*1)
         }
     }
 }
